@@ -4,8 +4,9 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.Iterator;
 
-import org.apache.cordova.api.Plugin;
-import org.apache.cordova.api.PluginResult;
+import org.apache.cordova.CordovaPlugin;
+import org.apache.cordova.PluginResult;
+import org.apache.cordova.CallbackContext;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -21,7 +22,7 @@ import com.facebook.android.Facebook;
 import com.facebook.android.Facebook.DialogListener;
 import com.facebook.android.FacebookError;
 
-public class ConnectPlugin extends Plugin {
+public class ConnectPlugin extends CordovaPlugin {
 
     public static final String SINGLE_SIGN_ON_DISABLED = "service_disabled";
     private final String TAG = "ConnectPlugin";
@@ -30,14 +31,15 @@ public class ConnectPlugin extends Plugin {
     private String userId;
     //used for dialog auth
     private String[] permissions = new String[] {};
-    private String callbackId;
+    private CallbackContext cb;
     private Bundle paramBundle;
     private String method;
 
     @Override
-    public PluginResult execute(String action, JSONArray args, final String callbackId) {
+    public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
         PluginResult pr = new PluginResult(PluginResult.Status.NO_RESULT);
         pr.setKeepCallback(true);
+        cb = callbackContext;
 
         if (action.equals("init")) {
             try {
@@ -54,7 +56,7 @@ public class ConnectPlugin extends Plugin {
                 if (access_token != null && expires != -1) {
                     this.facebook.setAccessToken(access_token);
                     this.facebook.setAccessExpires(expires);
-                	  try {
+                      try {
                         JSONObject o = new JSONObject(this.facebook.request("/me"));
                         this.userId = o.getString("id");
                     } catch (MalformedURLException e) {
@@ -70,21 +72,24 @@ public class ConnectPlugin extends Plugin {
                 }
 
                 if(facebook.isSessionValid() && this.userId != null) {
-                    return new PluginResult(PluginResult.Status.OK, this.getResponse());
+                    cb.success(this.getResponse());
+                    return true;
                 }
                 else {
-                    return new PluginResult(PluginResult.Status.NO_RESULT);
+                    cb.sendPluginResult(new PluginResult(PluginResult.Status.NO_RESULT));
+                    return true;
                 }
             } catch (JSONException e) {
                
                 e.printStackTrace();
-                return new PluginResult(PluginResult.Status.ERROR, "Invalid JSON args used. expected a string as the first arg.");
+                cb.error("Invalid JSON args used. expected a string as the first arg.");
+                return true;
             }
         }
 
         else if (action.equals("login")) {
             if (facebook != null) {
-            	final ConnectPlugin me = this;
+                final ConnectPlugin me = this;
                 String[] permissions = new String[args.length()];
                 try {
                     for (int i=0; i<args.length(); i++) {
@@ -93,19 +98,17 @@ public class ConnectPlugin extends Plugin {
                 } catch (JSONException e1) {
                    
                     e1.printStackTrace();
-                    return new PluginResult(PluginResult.Status.ERROR, "Invalid JSON args used. Expected a string array of permissions.");
+                    cb.error("Invalid JSON args used. Expected a string array of permissions.");
+                    return true;
                 }
                 cordova.setActivityResultCallback(this);
-//                this.ctx.setActivityResultCallback(this);
                 this.permissions = permissions;
-                this.callbackId = callbackId;
                 Runnable runnable = new Runnable() {
                     public void run() {
                         me.facebook.authorize(cordova.getActivity(), me.permissions, new AuthorizeListener(me));
                     };
                 };
                 cordova.getActivity().runOnUiThread(runnable);
-//                this.ctx.runOnUiThread(runnable);
             } else {
                 pr = new PluginResult(PluginResult.Status.ERROR, "Must call init before login.");
             }
@@ -143,50 +146,50 @@ public class ConnectPlugin extends Plugin {
         }
         
         else if (action.equals("showDialog")) {
-        	if (facebook != null) {
-        		Bundle collect = new Bundle();
-        		JSONObject params = null;
-        		try {
-        			params = args.getJSONObject(0);
-        		} catch (JSONException e) {
-        			params = new JSONObject();
-        		}
-        		
-        		final ConnectPlugin me = this;
-        		Iterator<?> iter = params.keys();
-        		while (iter.hasNext()) {
-        			String key = (String) iter.next();
-        			if (key.equals("method")) {
-        				try {
-        					this.method = params.getString(key);
-        				} catch (JSONException e) {
-        					Log.w(TAG, "Nonstring method parameter provided to dialog");
-        				}
-        			} else {
-        				try {
-        					collect.putString(key, params.getString(key));
-        				} catch (JSONException e) {
-        					// Need to handle JSON parameters
-        					Log.w(TAG, "Nonstring parameter provided to dialog discarded");
-        				}
-        			}
-        		}
-        		this.paramBundle =  new Bundle(collect);
-        		this.callbackId = callbackId;
-        		Runnable runnable = new Runnable() {
-        			public void run() {
-        				me.facebook.dialog (me.cordova.getActivity(), me.method , me.paramBundle , new UIDialogListener(me));
-        			};
-        		};
-        		cordova.getActivity().runOnUiThread(runnable);
-//        		this.ctx.runOnUiThread(runnable);
-        	} else {
-        		pr = new PluginResult(PluginResult.Status.ERROR, "Must call init before showDialog.");
-        	}
-        	
+            if (facebook != null) {
+                Bundle collect = new Bundle();
+                JSONObject params = null;
+                try {
+                    params = args.getJSONObject(0);
+                } catch (JSONException e) {
+                    params = new JSONObject();
+                }
+                
+                final ConnectPlugin me = this;
+                Iterator<?> iter = params.keys();
+                while (iter.hasNext()) {
+                    String key = (String) iter.next();
+                    if (key.equals("method")) {
+                        try {
+                            this.method = params.getString(key);
+                        } catch (JSONException e) {
+                            Log.w(TAG, "Nonstring method parameter provided to dialog");
+                        }
+                    } else {
+                        try {
+                            collect.putString(key, params.getString(key));
+                        } catch (JSONException e) {
+                            // Need to handle JSON parameters
+                            Log.w(TAG, "Nonstring parameter provided to dialog discarded");
+                        }
+                    }
+                }
+                this.paramBundle =  new Bundle(collect);
+                Runnable runnable = new Runnable() {
+                    public void run() {
+                        me.facebook.dialog (me.cordova.getActivity(), me.method , me.paramBundle , new UIDialogListener(me));
+                    };
+                };
+                cordova.getActivity().runOnUiThread(runnable);
+//              this.ctx.runOnUiThread(runnable);
+            } else {
+                pr = new PluginResult(PluginResult.Status.ERROR, "Must call init before showDialog.");
+            }
+            
         }
 
-        return pr;
+        cb.sendPluginResult(pr);
+        return true;
     }
 
     @Override
@@ -197,11 +200,11 @@ public class ConnectPlugin extends Plugin {
     }
 
     public JSONObject getResponse() {
-    	String response;
-    	if (facebook.isSessionValid()) {
-    		long expiresTimeInterval = facebook.getAccessExpires() - System.currentTimeMillis();
-    		long expiresIn = (expiresTimeInterval > 0) ? expiresTimeInterval : 0;
-    		response = "{"+
+        String response;
+        if (facebook.isSessionValid()) {
+            long expiresTimeInterval = facebook.getAccessExpires() - System.currentTimeMillis();
+            long expiresIn = (expiresTimeInterval > 0) ? expiresTimeInterval : 0;
+            response = "{"+
             "\"status\": \"connected\","+
             "\"authResponse\": {"+
               "\"accessToken\": \""+facebook.getAccessToken()+"\","+
@@ -211,11 +214,11 @@ public class ConnectPlugin extends Plugin {
               "\"userId\": \""+this.userId+"\""+
             "}"+
           "}";
-    	} else {
-    		response = "{"+
+        } else {
+            response = "{"+
             "\"status\": \"unknown\""+
           "}";
-    	}
+        }
 
         try {
             return new JSONObject(response);
@@ -227,34 +230,43 @@ public class ConnectPlugin extends Plugin {
     }
     
     class UIDialogListener implements DialogListener {
-   	 final ConnectPlugin fba;
+     final ConnectPlugin fba;
 
-		public UIDialogListener(ConnectPlugin fba){
-			super();
-			this.fba = fba;
-		}
+        public UIDialogListener(ConnectPlugin fba){
+            super();
+            this.fba = fba;
+        }
 
-		public void onComplete(Bundle values) {
-			//  Handle a successful dialog
-			Log.d(TAG,values.toString());
-			this.fba.success(new PluginResult(PluginResult.Status.OK), this.fba.callbackId);
-		}
+        public void onComplete(Bundle values) {
+            //  Handle a successful dialog
+            Log.d(TAG,values.toString());
+            JSONObject response = new JSONObject();;
+            try {
+                for(String key : values.keySet()) {
+                    response.put(key, values.getString(key));
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            } finally {
+                this.fba.cb.success(response);
+            }
+        }
 
-		public void onFacebookError(FacebookError e) {
+        public void onFacebookError(FacebookError e) {
            Log.d(TAG, "facebook error");
-           this.fba.error("Facebook error: " + e.getMessage(), callbackId);
+           this.fba.cb.error("Facebook error: " + e.getMessage());
        }
 
        public void onError(DialogError e) {
            Log.d(TAG, "other error");
-           this.fba.error("Dialog error: " + e.getMessage(), this.fba.callbackId);
+           this.fba.cb.error("Dialog error: " + e.getMessage());
        }
 
        public void onCancel() {
            Log.d(TAG, "cancel");
-           this.fba.error("Cancelled", this.fba.callbackId);
+           this.fba.cb.error("Cancelled");
        }
-	}
+    }
 
     class AuthorizeListener implements DialogListener {
         final ConnectPlugin fba;
@@ -280,7 +292,7 @@ public class ConnectPlugin extends Plugin {
                     try {
                         JSONObject o = new JSONObject(fba.facebook.request("/me"));
                         fba.userId = o.getString("id");
-                        fba.success(getResponse(), fba.callbackId);
+                        fba.cb.success(getResponse());
                     } catch (MalformedURLException e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
@@ -298,17 +310,17 @@ public class ConnectPlugin extends Plugin {
 
         public void onFacebookError(FacebookError e) {
             Log.d(TAG, "facebook error");
-            this.fba.error("Facebook error: " + e.getMessage(), callbackId);
+            this.fba.cb.error("Facebook error: " + e.getMessage());
         }
 
         public void onError(DialogError e) {
             Log.d(TAG, "other error");
-            this.fba.error("Dialog error: " + e.getMessage(), this.fba.callbackId);
+            this.fba.cb.error("Dialog error: " + e.getMessage());
         }
 
         public void onCancel() {
             Log.d(TAG, "cancel");
-            this.fba.error("Cancelled", this.fba.callbackId);
+            this.fba.cb.error("Cancelled");
         }
     }
 }
