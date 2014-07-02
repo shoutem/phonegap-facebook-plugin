@@ -275,12 +275,10 @@
 
 - (void) logout:(CDVInvokedUrlCommand*)command
 {
-    if (!FBSession.activeSession.isOpen) {
-        return;
+    if (FBSession.activeSession.isOpen) {
+        // Close the session and clear the cache
+        [FBSession.activeSession closeAndClearTokenInformation];
     }
-    
-    // Close the session and clear the cache
-    [FBSession.activeSession closeAndClearTokenInformation];
     
     CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
@@ -459,6 +457,7 @@
                         @"session_key" : [NSNumber numberWithBool:YES],
                         @"sig" : @"...",
                         @"userID" : self.userid,
+                        @"permissions" : [FBSession.activeSession.permissions componentsJoinedByString:@","]
                         };
     }
     
