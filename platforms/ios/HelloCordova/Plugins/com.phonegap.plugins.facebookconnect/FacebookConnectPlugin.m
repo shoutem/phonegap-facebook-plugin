@@ -386,30 +386,51 @@
                                          messageAsString:@"Error completing dialog."];
         [self.commandDelegate sendPluginResult:pluginResult callbackId:self.dialogCallbackId];
     } else {
-        // Show the web dialog
-        [FBWebDialogs
-         presentDialogModallyWithSession:FBSession.activeSession
-         dialog:method parameters:params
-         handler:^(FBWebDialogResult result, NSURL *resultURL, NSError *error) {
-             CDVPluginResult* pluginResult = nil;
-             if (error) {
-                 // Dialog failed with error
-                 pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
-                                                  messageAsString:@"Error completing dialog."];
-             } else {
-                 if (result == FBWebDialogResultDialogNotCompleted) {
-                     // User clicked the "x" icon to Cancel
-                     pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_NO_RESULT];
+        // Native share dialog
+        FBLinkShareParams *nativeParams = [[[FBLinkShareParams alloc] init] autorelease];
+        nativeParams.link = [NSURL URLWithString:[params objectForKey:@"href"]];
+        
+        if ([FBDialogs canPresentShareDialogWithParams:nativeParams])
+        {
+            [FBDialogs presentShareDialogWithLink:nativeParams.link handler:^(FBAppCall *call, NSDictionary *results, NSError *error) {
+                CDVPluginResult* pluginResult = nil;
+                if (error) {
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                                     messageAsString:@"Error completing dialog."];
+                } else {
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:results];
+                }
+                [self.commandDelegate sendPluginResult:pluginResult callbackId:self.dialogCallbackId];
+            }];
+        }
+        else
+        {
+            // Show the web dialog
+            [FBWebDialogs
+             presentDialogModallyWithSession:FBSession.activeSession
+             dialog:method parameters:params
+             handler:^(FBWebDialogResult result, NSURL *resultURL, NSError *error) {
+                 CDVPluginResult* pluginResult = nil;
+                 if (error) {
+                     // Dialog failed with error
+                     pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                                      messageAsString:@"Error completing dialog."];
                  } else {
-                     // Send the URL parameters back, for a requests dialog, the "request" parameter
-                     // will include the resluting request id. For a feed dialog, the "post_id"
-                     // parameter will include the resulting post id.
-                     NSDictionary *params = [self parseURLParams:[resultURL query]];
-                     pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:params];
+                     if (result == FBWebDialogResultDialogNotCompleted) {
+                         // User clicked the "x" icon to Cancel
+                         pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_NO_RESULT];
+                     } else {
+                         // Send the URL parameters back, for a requests dialog, the "request" parameter
+                         // will include the resluting request id. For a feed dialog, the "post_id"
+                         // parameter will include the resulting post id.
+                         NSDictionary *params = [self parseURLParams:[resultURL query]];
+                         pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:params];
+                     }
                  }
-             }
-             [self.commandDelegate sendPluginResult:pluginResult callbackId:self.dialogCallbackId];
-         }];
+                 [self.commandDelegate sendPluginResult:pluginResult callbackId:self.dialogCallbackId];
+             }];
+        }
+        
         [super writeJavascript:nil];
     }
     
