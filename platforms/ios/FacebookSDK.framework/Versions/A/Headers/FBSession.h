@@ -16,6 +16,7 @@
 
 #import <Accounts/Accounts.h>
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 
 #import "FBSDKMacros.h"
 
@@ -49,9 +50,13 @@ FBSDK_EXTERN NSString *const FBSessionDidBecomeClosedActiveSessionNotification;
 
  @abstract Passed to handler block each time a session state changes
 
- @discussion
+ @discussion A typical `FBSession` lifecycle will start with `FBSessionStateCreated`. If a cached
+  token is available, it will transition to `FBSessionStateCreatedTokenLoaded`. When attempting to
+  open a session, it will become `FBSessionStateCreatedOpening` internally before going to
+  `FBSessionStateOpen` or `FBSessionStateClosedLoginFailed`. From `FBSessionStateOpen` it can
+  go to `FBSessionStateOpenTokenExtended` (when more permissions were granted) or `FBSessionStateClosed`.
  */
-typedef enum {
+typedef NS_ENUM(NSUInteger, FBSessionState) {
     /*! One of two initial states indicating that no valid cached token was found */
     FBSessionStateCreated                   = 0,
     /*! One of two initial session states indicating that a cached token was loaded;
@@ -72,7 +77,7 @@ typedef enum {
     /*! Closed session state indicating that the session was closed, but the users token
      remains cached on the device for later use */
     FBSessionStateClosed                    = 2 | FB_SESSIONSTATETERMINALBIT, // "
-} FBSessionState;
+};
 
 /*! helper macro to test for states that imply an open session */
 #define FB_ISSESSIONOPENWITHSTATE(state) (0 != (state & FB_SESSIONSTATEOPENBIT))
@@ -101,7 +106,7 @@ typedef enum {
  Facebook Login, and only falls back if needed. In rare cases, it may be preferable to disallow
  fallback Facebook Login completely, or to force a fallback login.
  */
-typedef enum {
+typedef NS_ENUM(NSUInteger, FBSessionLoginBehavior) {
     /*! Attempt Facebook Login, ask user for credentials if necessary */
     FBSessionLoginBehaviorWithFallbackToWebView      = 0,
     /*! Attempt Facebook Login, no direct request for credentials will be made */
@@ -112,7 +117,7 @@ typedef enum {
     FBSessionLoginBehaviorUseSystemAccountIfPresent  = 3,
     /*! Attempt only to login with Safari */
     FBSessionLoginBehaviorForcingSafari = 4,
-} FBSessionLoginBehavior;
+};
 
 /*!
  @typedef FBSessionDefaultAudience enum
@@ -126,7 +131,7 @@ typedef enum {
  publication ceiling for the application. This enumerated value allows the application to select which
  audience to ask the user to grant publish permission for.
  */
-typedef enum {
+typedef NS_ENUM(NSUInteger, FBSessionDefaultAudience) {
     /*! No audience needed; this value is useful for cases where data will only be read from Facebook */
     FBSessionDefaultAudienceNone                = 0,
     /*! Indicates that only the user is able to see posts made by the application */
@@ -135,7 +140,7 @@ typedef enum {
     FBSessionDefaultAudienceFriends             = 20,
     /*! Indicates that all Facebook users are able to see posts made by the application */
     FBSessionDefaultAudienceEveryone            = 30,
-} FBSessionDefaultAudience;
+};
 
 /*!
  @typedef FBSessionLoginType enum
@@ -150,7 +155,7 @@ typedef enum {
  given login does not matter, however for certain capabilities, the type of login can impact the behavior
  of other Facebook functionality.
  */
-typedef enum {
+typedef NS_ENUM(NSUInteger, FBSessionLoginType) {
     /*! A login type has not yet been established */
     FBSessionLoginTypeNone                      = 0,
     /*! A system integrated account was used to log the user into the application */
@@ -163,7 +168,7 @@ typedef enum {
     FBSessionLoginTypeWebView                   = 4,
     /*! A test user was used to create an open session */
     FBSessionLoginTypeTestUser                  = 5,
-} FBSessionLoginType;
+};
 
 /*!
  @typedef
@@ -214,7 +219,6 @@ typedef FBSessionRequestPermissionResultHandler FBSessionReauthorizeResultHandle
  @typedef
 
  @abstract Block type used to define blocks called for system credential renewals.
- @discussion
  */
 typedef void (^FBSessionRenewSystemCredentialsHandler)(ACAccountCredentialRenewResult result, NSError *error) ;
 
@@ -368,6 +372,12 @@ __attribute__((deprecated));
 @property (readonly, copy) NSArray *declinedPermissions;
 
 /*!
+ @abstract The presenting view controller passed to the `open...` methods
+ @discussion You can use this property to clear out weak references when they are no longer needed.
+ */
+@property (nonatomic, assign) UIViewController *fromViewController;
+
+/*!
  @methodgroup Instance methods
  */
 
@@ -389,8 +399,18 @@ __attribute__((deprecated));
  state changes. The block will be released when the session is closed.
 
  @param handler A block to call with the state changes. The default is nil.
+
+ @param fromViewController The view controller to present from. If nil, the topmost view controller will be
+ automatically determined as best as possible.
  */
-- (void)openWithCompletionHandler:(FBSessionStateHandler)handler;
+- (void)openWithCompletionHandler:(FBSessionStateHandler)handler fromViewController:(UIViewController *)fromViewController;
+
+/*!
+ @deprecated use openWithCompletionHandler:fromViewController: instead
+ */
+- (void)openWithCompletionHandler:(FBSessionStateHandler)handler
+__attribute__ ((deprecated("use openWithCompletionHandler:fromViewController: instead")));
+
 
 /*!
  @method
@@ -411,10 +431,20 @@ __attribute__((deprecated));
 
  @param behavior Controls whether to allow, force, or prohibit Facebook Login or Inline Facebook Login. The default
  is to allow Facebook Login, with fallback to Inline Facebook Login.
+ @param fromViewController The view controller to present from. If nil, the topmost view controller will be
+ automatically determined as best as possible.
  @param handler A block to call with session state changes. The default is nil.
  */
 - (void)openWithBehavior:(FBSessionLoginBehavior)behavior
+      fromViewController:(UIViewController *)fromViewController
        completionHandler:(FBSessionStateHandler)handler;
+
+/*!
+ @deprecated use openWithBehavior:fromViewControllercompletionHandler instead
+ */
+- (void)openWithBehavior:(FBSessionLoginBehavior)behavior
+       completionHandler:(FBSessionStateHandler)handler
+__attribute__ ((deprecated("use openWithBehavior:fromViewControllercompletionHandler: instead")));
 
 /*!
  @method
@@ -609,6 +639,9 @@ __attribute__((deprecated));
  token can be used to open the session. Passing NO to this argument, assures the method will not present UI
  to the user in order to open the session.
 
+ @param fromViewController The view controller to present from. If nil, the topmost view controller will be
+ automatically determined as best as possible.
+
  @discussion
  Returns YES if the session was opened synchronously without presenting UI to the user. This occurs
  when there is a cached token available from a previous run of the application. If NO is returned, this indicates
@@ -617,7 +650,13 @@ __attribute__((deprecated));
  this return value is to switch-on facebook capabilities in your UX upon startup, in the case where the session
  is opened via cache.
  */
-+ (BOOL)openActiveSessionWithAllowLoginUI:(BOOL)allowLoginUI;
++ (BOOL)openActiveSessionWithAllowLoginUI:(BOOL)allowLoginUI fromViewController:(UIViewController *)fromViewController;
+
+/*!
+ @deprecated use openActiveSessionWithAllowLoginUI:fromViewController: instead
+ */
++ (BOOL)openActiveSessionWithAllowLoginUI:(BOOL)allowLoginUI
+__attribute__ ((deprecated("use openActiveSessionWithAllowLoginUI:fromViewController: instead")));
 
 /*!
  @abstract
@@ -674,6 +713,9 @@ __attribute__((deprecated));
  token can be used to open the session. Passing NO to this argument, assures the method will not present UI
  to the user in order to open the session.
 
+ @param fromViewController The view controller to present from. If nil, the topmost view controller will be
+ automatically determined as best as possible.
+
  @param handler                 Many applications will benefit from notification when a session becomes invalid
  or undergoes other state transitions. If a block is provided, the FBSession
  object will call the block each time the session changes state.
@@ -689,7 +731,16 @@ __attribute__((deprecated));
  */
 + (BOOL)openActiveSessionWithReadPermissions:(NSArray *)readPermissions
                                 allowLoginUI:(BOOL)allowLoginUI
+                          fromViewController:(UIViewController *)fromViewController
                            completionHandler:(FBSessionStateHandler)handler;
+
+/*!
+ @deprecated use openActiveSessionWithReadPermissions:allowLoginUI:fromViewController:completionHandler: instead
+ */
++ (BOOL)openActiveSessionWithReadPermissions:(NSArray *)readPermissions
+                                allowLoginUI:(BOOL)allowLoginUI
+                           completionHandler:(FBSessionStateHandler)handler
+__attribute__ ((deprecated("use openActiveSessionWithReadPermissions:allowLoginUI:fromViewController:completionHandler: instead")));
 
 /*!
  @abstract
@@ -709,6 +760,9 @@ __attribute__((deprecated));
  token can be used to open the session. Passing NO to this argument, assures the method will not present UI
  to the user in order to open the session.
 
+ @param fromViewController The view controller to present from. If nil, the topmost view controller will be
+ automatically determined as best as possible.
+
  @param handler                 Many applications will benefit from notification when a session becomes invalid
  or undergoes other state transitions. If a block is provided, the FBSession
  object will call the block each time the session changes state.
@@ -725,7 +779,17 @@ __attribute__((deprecated));
 + (BOOL)openActiveSessionWithPublishPermissions:(NSArray *)publishPermissions
                                 defaultAudience:(FBSessionDefaultAudience)defaultAudience
                                    allowLoginUI:(BOOL)allowLoginUI
+                             fromViewController:(UIViewController *)fromViewController
                               completionHandler:(FBSessionStateHandler)handler;
+
+/*!
+ @deprecated use openActiveSessionWithPublishPermissions:defaultAudience:allowLoginUI:fromViewController:completionHandler instead
+ */
++ (BOOL)openActiveSessionWithPublishPermissions:(NSArray *)publishPermissions
+                                defaultAudience:(FBSessionDefaultAudience)defaultAudience
+                                   allowLoginUI:(BOOL)allowLoginUI
+                              completionHandler:(FBSessionStateHandler)handler
+__attribute__ ((deprecated("use openActiveSessionWithPublishPermissions:defaultAudience:allowLoginUI:fromViewController:completionHandler: instead")));
 
 /*!
  @abstract
