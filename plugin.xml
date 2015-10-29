@@ -64,7 +64,7 @@
         </config-file>
 
         <!-- custom framework -->
-        <framework src="platforms/android/FacebookLib" custom="true" />
+        <framework src="com.facebook.android:facebook-android-sdk:4.1.2"/>
         <!-- cordova plugin src files -->
         <source-file src="platforms/android/src/org/apache/cordova/facebook/ConnectPlugin.java" target-dir="src/org/apache/cordova/facebook" />
 
