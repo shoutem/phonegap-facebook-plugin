@@ -486,7 +486,7 @@
     NSString *link = [params objectForKey:@"link"];
     link = link ? link : [params objectForKey:@"href"];
     NSString *title = [params objectForKey:@"name"];
-    link = title ? title : [params objectForKey:@"title"];
+    title = title ? title : [params objectForKey:@"title"];
 
     // Add content
     FBSDKShareLinkContent *content = [[FBSDKShareLinkContent alloc] init];
